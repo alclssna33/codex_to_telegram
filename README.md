@@ -97,48 +97,26 @@ future adapters can consume the same Codex control core.
 
 Prerequisites:
 
+- Go 1.26 or newer when building from source.
 - OpenAI Codex CLI with `codex app-server`.
 - A Telegram bot token from BotFather.
 - Your Telegram numeric user id.
 
-On macOS, download the latest `.pkg` from
-[GitHub Releases](https://github.com/alclssna33/codex_to_telegram/releases/latest),
-install it, then run:
-
-```powershell
-ctr-go service install --start --start-at-login
-ctr-go doctor
-```
-
-`ctr-go service install` starts a friendly first-run setup wizard when required.
-The same values can be passed with flags for scripted installs. It writes a
-private local config file at `~/.codex-tg/config.env` by default, creates a
-user LaunchAgent, and starts the daemon when `--start` is present.
-If your shell uses proxy variables such as `HTTPS_PROXY` or `NO_PROXY`, the
-installer preserves them in the private config so the LaunchAgent can reach the
-same network without putting secrets or user ids into the plist.
-
-For Linux, Windows, or manual macOS setup, download the latest `ctr-go` archive,
-unpack it, then run:
-
-```powershell
-ctr-go init
-ctr-go doctor
-ctr-go daemon run
-```
-
-Use `CTR_GO_CONFIG` to point at another config file. Explicit environment
-variables still override config file values.
-
-Build from source:
+Build and initialize from source:
 
 ```powershell
 git clone https://github.com/alclssna33/codex_to_telegram.git
 cd codex_to_telegram
-go run ./cmd/ctr-go init
-go run ./cmd/ctr-go doctor
-go run ./cmd/ctr-go daemon run
+go build -o bin/ctr-go.exe ./cmd/ctr-go
+.\bin\ctr-go.exe init
+.\bin\ctr-go.exe doctor
+.\bin\ctr-go.exe daemon run
 ```
+
+For Windows automatic startup, use `.\bin\ctr-go.exe service install`, then
+`.\bin\ctr-go.exe service start`. The command creates a local scheduled task;
+it never uploads Codex or Telegram data. Use `CTR_GO_CONFIG` to select another
+private config file. Explicit environment variables override config values.
 
 Environment-only setup remains supported:
 
