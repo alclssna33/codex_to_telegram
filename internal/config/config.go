@@ -253,10 +253,7 @@ func fromSource(source envSource) Config {
 	if err != nil {
 		cwd = "."
 	}
-	codexBin := source.get("CTR_GO_CODEX_BIN")
-	if codexBin == "" {
-		codexBin = "codex"
-	}
+	codexBin := resolveCodexBin(source.get("CTR_GO_CODEX_BIN"))
 	listen := source.get("CTR_GO_APP_SERVER_LISTEN")
 	if listen == "" {
 		listen = "stdio://"
@@ -293,6 +290,55 @@ func fromSource(source envSource) Config {
 		ProjectsChatPreviewLimit:    source.positiveInt("CTR_GO_PROJECTS_CHAT_PREVIEW_LIMIT", 3),
 		ChatsPageSize:               source.positiveInt("CTR_GO_CHATS_PAGE_SIZE", 8),
 	}
+}
+
+// resolveCodexBin preserves a configured executable when it exists. Codex
+// Desktop stores versioned binaries under LOCALAPPDATA on Windows, so an
+// update can remove a previously configured absolute path. In that case,
+// use the newest installed Desktop binary rather than leaving the daemon
+// unable to start its App Server.
+func resolveCodexBin(configured string) string {
+	configured = strings.TrimSpace(configured)
+	if configured == "" {
+		return "codex"
+	}
+	if fileExists(configured) || !filepath.IsAbs(configured) || runtime.GOOS != "windows" {
+		return configured
+	}
+	root := filepath.Join(strings.TrimSpace(os.Getenv("LOCALAPPDATA")), "OpenAI", "Codex", "bin")
+	if candidate := newestCodexDesktopBinary(root); candidate != "" {
+		return candidate
+	}
+	return configured
+}
+
+func newestCodexDesktopBinary(root string) string {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return ""
+	}
+	var newest string
+	var newestMod time.Time
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		candidate := filepath.Join(root, entry.Name(), "codex.exe")
+		info, err := os.Stat(candidate)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		if newest == "" || info.ModTime().After(newestMod) || (info.ModTime().Equal(newestMod) && candidate > newest) {
+			newest = candidate
+			newestMod = info.ModTime()
+		}
+	}
+	return newest
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(strings.TrimSpace(path))
+	return err == nil && !info.IsDir()
 }
 
 func (c Config) MarshalJSON() ([]byte, error) {

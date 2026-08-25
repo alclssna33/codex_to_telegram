@@ -88,6 +88,35 @@ func TestLoadNotifierRequiresOneOwnerButNoProjects(t *testing.T) {
 	}
 }
 
+func TestFromSourceReplacesMissingWindowsDesktopCodexPath(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows Codex Desktop fallback is Windows-only")
+	}
+
+	appData := t.TempDir()
+	binRoot := filepath.Join(appData, "OpenAI", "Codex", "bin")
+	older := filepath.Join(binRoot, "older", "codex.exe")
+	newer := filepath.Join(binRoot, "newer", "codex.exe")
+	for _, path := range []string{older, newer} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("test"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chtimes(older, time.Now().Add(-time.Hour), time.Now().Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LOCALAPPDATA", appData)
+	missing := filepath.Join(binRoot, "removed", "codex.exe")
+
+	cfg := fromSource(envSource{file: map[string]string{"CTR_GO_CODEX_BIN": missing}})
+	if got := cfg.CodexBin; got != newer {
+		t.Fatalf("CodexBin = %q, want newest installed Codex Desktop binary %q", got, newer)
+	}
+}
+
 func TestLoadNotifierSkipsOpenAICredentialResolution(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows Credential Manager resolution is Windows-only")
