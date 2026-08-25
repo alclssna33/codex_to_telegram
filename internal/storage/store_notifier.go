@@ -172,7 +172,10 @@ func (s *Store) ObserveNotifierThread(ctx context.Context, threadID string, last
 		read_required = 1,
 		defer_until = 0,
 		updated_at = excluded.updated_at
-	WHERE excluded.last_updated_at > notifier_observations.last_updated_at`,
+	-- Codex can return a slightly older thread/list timestamp than the
+	-- previously stored thread/read timestamp. Any changed list watermark
+	-- therefore needs a bounded re-read; identical values stay idle.
+	WHERE excluded.last_updated_at <> notifier_observations.last_updated_at`,
 		threadID, lastUpdatedAt, now.UTC().Format(time.RFC3339Nano)); err != nil {
 		return err
 	}
@@ -285,7 +288,10 @@ func (s *Store) RecordNotifierRead(ctx context.Context, threadID, turnID, status
 	)
 	VALUES (?, ?, ?, ?, 1, ?, (SELECT coalesce(max(discovery_seq), 0) + 1 FROM notifier_observations), ?)
 	ON CONFLICT(thread_id) DO UPDATE SET
-		last_updated_at = excluded.last_updated_at,
+		-- last_updated_at is the thread/list discovery watermark. A detailed
+		-- thread/read response may carry a slightly newer timestamp, but must
+		-- not suppress a later list update that needs another read.
+		last_updated_at = notifier_observations.last_updated_at,
 		last_turn_id = excluded.last_turn_id,
 		last_turn_status = excluded.last_turn_status,
 		baseline_ready = 1,

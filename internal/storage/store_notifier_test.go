@@ -135,6 +135,58 @@ func TestNotifierObservationTerminalReadClearsDueAndCountsActiveRows(t *testing.
 	}
 }
 
+func TestNotifierObservationRearmsWhenDetailTimestampRunsAheadOfList(t *testing.T) {
+	t.Parallel()
+
+	store := openNotifierTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+
+	if err := store.ObserveNotifierThread(ctx, "thread-1", 100, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordNotifierRead(ctx, "thread-1", "turn-interrupted", "interrupted", 103, false, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ObserveNotifierThread(ctx, "thread-1", 102, now.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	observation, err := store.NotifierObservation(ctx, "thread-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation == nil || !observation.ReadRequired || observation.LastUpdatedAt != 102 {
+		t.Fatalf("observation=%#v, want list update 102 to re-arm a required read", observation)
+	}
+}
+
+func TestNotifierObservationRearmsWhenExistingWatermarkIsAheadOfList(t *testing.T) {
+	t.Parallel()
+
+	store := openNotifierTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+
+	if err := store.ObserveNotifierThread(ctx, "thread-1", 103, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordNotifierRead(ctx, "thread-1", "turn-interrupted", "interrupted", 103, false, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ObserveNotifierThread(ctx, "thread-1", 102, now.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	observation, err := store.NotifierObservation(ctx, "thread-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation == nil || !observation.ReadRequired || observation.LastUpdatedAt != 102 {
+		t.Fatalf("observation=%#v, want changed list watermark 102 to re-arm a required read", observation)
+	}
+}
+
 func TestNotifierObservationDeferPersistsUntilRetryTime(t *testing.T) {
 	t.Parallel()
 
