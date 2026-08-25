@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+      - name: Secret pattern smoke scan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          forbidden_files='(^|/)(\.env|\.env\.local|config\.env|.*\.sqlite|.*\.db|.*\.log|.*\.exe|.*\.session)$'
+          if git ls-files | grep -E "$forbidden_files"; then
+            echo "Forbidden local/runtime file is tracked."
+            exit 1
+          fi
+
+          real_secret_patterns='(BOT_TOKEN|TELEGRAM_BOT_TOKEN)[[:space:]]*=[[:space:]]*[0-9]+:[A-Za-z0-9_-]{20,}|api_hash[[:space:]]*=[[:space:]]*[0-9a-f]{32}|api_id[[:space:]]*=[[:space:]]*[0-9]{6,}|phone[[:space:]]*=[[:space:]]*\+[0-9]{8,}'
+          if git grep -nE "$real_secret_patterns" -- ':!go.sum' ':!docs/assets/*.png'; then
+            echo "Potential secret found."
+            exit 1
+          fi
+
+          if git grep -n 'C:\\Users\\' -- ':!go.sum' ':!docs/assets/*.png' | grep -v 'C:\\Users\\you'; then
+            echo "Potential private Windows local path found."
+            exit 1
+          fi
+      - name: Test
+        run: go test ./...
+      - name: Build
+        run: go build -buildvcs=false ./...
