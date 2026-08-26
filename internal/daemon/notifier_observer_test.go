@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alclssna33/codex_to_telegram/internal/appserver"
 	"github.com/alclssna33/codex_to_telegram/internal/config"
 	"github.com/alclssna33/codex_to_telegram/internal/control"
 	"github.com/alclssna33/codex_to_telegram/internal/model"
@@ -366,6 +367,40 @@ func TestNotifierPollContinuesAfterOneThreadReadError(t *testing.T) {
 	}
 	if count := countDeliveryKind(t, svc, "notifier_terminal"); count != 1 {
 		t.Fatalf("notifier_terminal deliveries after retry = %d, want no duplicate", count)
+	}
+}
+
+func TestNotifierQuarantinesUnreadableSubagentThreadAndContinuesDelivery(t *testing.T) {
+	svc := newNotifierService(t)
+	ctx := context.Background()
+	if err := svc.store.SetGlobalObserverTarget(ctx, 7, 0, true); err != nil {
+		t.Fatal(err)
+	}
+	fake := &notifierObserverSession{
+		threadReads: map[string]map[string]any{
+			"later-completed": notifierThreadReadPayload("later-completed", "Later completed", "/work/later", "turn-later", "completed", "later result", notifierTestNow.Unix()+1),
+		},
+		threadReadErrs: map[string]error{
+			"unreadable-subagent": &appserver.RPCError{Code: -32603, Message: "failed to deserialize stored thread item subagent-completed-test: unknown variant completed"},
+		},
+	}
+	useNotifierPollSession(svc, fake)
+	if err := svc.store.ObserveNotifierThread(ctx, "unreadable-subagent", notifierTestNow.Unix()+2, svc.now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.store.ObserveNotifierThread(ctx, "later-completed", notifierTestNow.Unix()+1, svc.now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.pollNotifierThreads(ctx); err != nil {
+		t.Fatalf("poll error = %v, want unreadable subagent thread to be quarantined", err)
+	}
+	if count := countDeliveryKind(t, svc, "notifier_terminal"); count != 1 {
+		t.Fatalf("notifier_terminal deliveries = %d, want later completed notification", count)
+	}
+	assertNotifierDueIDs(t, svc, []string{})
+	if got := notifierThreadReadIDs(fake.threadReadCalls); !reflect.DeepEqual(got, []string{"unreadable-subagent", "later-completed"}) {
+		t.Fatalf("ThreadRead calls = %v, want unreadable subagent then later completed", got)
 	}
 }
 

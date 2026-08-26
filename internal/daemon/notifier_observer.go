@@ -134,6 +134,12 @@ func (s *Service) pollNotifierThreads(ctx context.Context) error {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return ctxErr
 			}
+			if isUnreadableSubagentThreadReadError(err) {
+				if clearErr := s.store.RecordNotifierRead(ctx, previous.ThreadID, previous.LastTurnID, previous.LastTurnStatus, previous.LastUpdatedAt, false, s.now()); clearErr != nil {
+					return errors.Join(err, clearErr)
+				}
+				continue
+			}
 			if errors.Is(err, context.DeadlineExceeded) {
 				if deferErr := s.store.DeferNotifierRead(ctx, previous.ThreadID, s.now().Add(notifierThreadReadRetryDelay), s.now()); deferErr != nil {
 					return errors.Join(err, deferErr)
@@ -145,6 +151,19 @@ func (s *Service) pollNotifierThreads(ctx context.Context) error {
 		}
 	}
 	return firstErr
+}
+
+// isUnreadableSubagentThreadReadError identifies a current Codex App Server
+// deserialization failure. Retrying the same unchanged parent thread cannot
+// succeed and would otherwise occupy the small notifier read batch forever.
+func isUnreadableSubagentThreadReadError(err error) bool {
+	var rpcErr *appserver.RPCError
+	if !errors.As(err, &rpcErr) || rpcErr == nil || rpcErr.Code != -32603 {
+		return false
+	}
+	message := strings.ToLower(rpcErr.Message)
+	return strings.Contains(message, "failed to deserialize stored thread item") &&
+		strings.Contains(message, "subagent-completed-")
 }
 
 func (s *Service) pollNotifierThread(ctx context.Context, poll Session, previous model.NotifierObservation, activationUnix int64) error {
