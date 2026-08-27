@@ -58,6 +58,10 @@ Use `ctr-go service restart` after changing configuration. Use
 delete Credential Manager entries unless you explicitly remove them with
 `ctr-go secrets delete telegram`.
 
+If Windows power, idle, or login transitions sometimes leave the bridge stopped,
+install the optional [current-user watchdog](windows-watchdog.md). It checks for
+the exact bridge process every five minutes and does not create duplicates.
+
 ## Telegram operation
 
 Send `/start` to the owner DM. The bot confirms notifier mode and stores that DM
