@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alclssna33/codex_to_telegram/internal/appserver"
+	"github.com/alclssna33/codex_to_telegram/internal/config"
 	"github.com/alclssna33/codex_to_telegram/internal/control"
 	"github.com/alclssna33/codex_to_telegram/internal/model"
 	"github.com/alclssna33/codex_to_telegram/internal/storage"
@@ -171,7 +172,7 @@ func (s *Service) pollNotifierThread(ctx context.Context, poll Session, previous
 	if threadID == "" {
 		return nil
 	}
-	requestCtx, cancel := context.WithTimeout(ctx, maxDuration(10*time.Second, s.cfg.ObserverPollInterval*2))
+	requestCtx, cancel := context.WithTimeout(ctx, notifierThreadReadTimeout(s.cfg))
 	defer cancel()
 	payload, err := poll.ThreadRead(requestCtx, threadID, true)
 	if err != nil {
@@ -221,6 +222,13 @@ func (s *Service) pollNotifierThread(ctx context.Context, poll Session, previous
 		return err
 	}
 	return nil
+}
+
+// notifierThreadReadTimeout lets a large persisted Codex conversation use the
+// configured App Server deadline. A five-second observer cadence must not turn
+// into a ten-second hard cap for a multi-megabyte thread/read response.
+func notifierThreadReadTimeout(cfg config.Config) time.Duration {
+	return maxDuration(maxDuration(10*time.Second, cfg.ObserverPollInterval*2), cfg.RequestTimeout)
 }
 
 func notifierTurnSnapshotsFromRead(payload map[string]any, fallbackThreadID string) []appserver.ThreadReadSnapshot {

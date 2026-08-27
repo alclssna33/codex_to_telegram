@@ -22,6 +22,13 @@ import (
 
 var notifierTestNow = time.Date(2026, 8, 24, 9, 0, 0, 0, time.UTC)
 
+func TestNotifierThreadReadTimeoutAllowsConfiguredAppServerDeadline(t *testing.T) {
+	got := notifierThreadReadTimeout(config.Config{RequestTimeout: 30 * time.Second, ObserverPollInterval: 5 * time.Second})
+	if got != 30*time.Second {
+		t.Fatalf("notifierThreadReadTimeout() = %s, want 30s for a large completed Codex conversation", got)
+	}
+}
+
 func TestNotifierDiscoveryUsesInteractiveSourcesWithoutCWD(t *testing.T) {
 	svc := newNotifierService(t)
 	fake := &notifierObserverSession{
